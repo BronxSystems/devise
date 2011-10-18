@@ -17,5 +17,3 @@ module Devise
     end
   end
 end
-
-Warden::Strategies.add(:database_authenticatable, Devise::Strategies::DatabaseAuthenticatable)

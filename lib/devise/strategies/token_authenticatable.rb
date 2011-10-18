@@ -53,5 +53,3 @@ module Devise
     end
   end
 end
-
-Warden::Strategies.add(:token_authenticatable, Devise::Strategies::TokenAuthenticatable)

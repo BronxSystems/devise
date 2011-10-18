@@ -1,26 +1,12 @@
-require 'rails'
-require 'active_support/core_ext/numeric/time'
+require 'active_support/all'
 require 'active_support/dependencies'
 require 'orm_adapter'
 require 'set'
 require 'securerandom'
 
+ActiveSupport::Dependencies.autoload_paths << File.expand_path("..", __FILE__)
+
 module Devise
-  autoload :FailureApp, 'devise/failure_app'
-  autoload :OmniAuth, 'devise/omniauth'
-  autoload :PathChecker, 'devise/path_checker'
-  autoload :Schema, 'devise/schema'
-  autoload :TestHelpers, 'devise/test_helpers'
-
-  module Controllers
-    autoload :Helpers, 'devise/controllers/helpers'
-    autoload :InternalHelpers, 'devise/controllers/internal_helpers'
-    autoload :Rememberable, 'devise/controllers/rememberable'
-    autoload :ScopedViews, 'devise/controllers/scoped_views'
-    autoload :SharedHelpers, 'devise/controllers/shared_helpers'
-    autoload :UrlHelpers, 'devise/controllers/url_helpers'
-  end
-
   module Encryptors
     autoload :Base, 'devise/encryptors/base'
     autoload :AuthlogicSha512, 'devise/encryptors/authlogic_sha512'
@@ -42,10 +28,7 @@ module Devise
   # Constants which holds devise configuration for extensions. Those should
   # not be modified by the "end user" (this is why they are constants).
   ALL         = []
-  CONTROLLERS = ActiveSupport::OrderedHash.new
-  ROUTES      = ActiveSupport::OrderedHash.new
   STRATEGIES  = ActiveSupport::OrderedHash.new
-  URL_HELPERS = ActiveSupport::OrderedHash.new
 
   # Strategies that do not require user input.
   NO_INPUT = []
@@ -226,20 +209,10 @@ module Devise
   mattr_reader :mappings
   @@mappings = ActiveSupport::OrderedHash.new
 
-  # Omniauth configurations.
-  mattr_reader :omniauth_configs
-  @@omniauth_configs = ActiveSupport::OrderedHash.new
-
   # Define a set of modules that are called when a mapping is added.
   mattr_reader :helpers
   @@helpers = Set.new
-  @@helpers << Devise::Controllers::Helpers
-
-  # Private methods to interface with Warden.
-  mattr_accessor :warden_config
-  @@warden_config = nil
-  @@warden_config_block = nil
-
+  
   # When true, enter in paranoid mode to avoid user enumeration.
   mattr_accessor :paranoid
   @@paranoid = false
@@ -269,10 +242,6 @@ module Devise
     end
   end
 
-  def self.omniauth_providers
-    omniauth_configs.keys
-  end
-
   # Get the mailer class from the mailer reference object.
   def self.mailer
     @@mailer_ref.get
@@ -298,8 +267,6 @@ module Devise
   # == Options:
   #
   #   +model+      - String representing the load path to a custom *model* for this module (to autoload.)
-  #   +controller+ - Symbol representing the name of an exisiting or custom *controller* for this module.
-  #   +route+      - Symbol representing the named *route* helper for this module.
   #   +strategy+   - Symbol representing if this module got a custom *strategy*.
   #
   # All values, except :model, accept also a boolean and will have the same name as the given module
@@ -313,38 +280,14 @@ module Devise
   #
   def self.add_module(module_name, options = {})
     ALL << module_name
-    options.assert_valid_keys(:strategy, :model, :controller, :route)
+    options.assert_valid_keys(:strategy, :model)
 
     if strategy = options[:strategy]
       strategy = (strategy == true ? module_name : strategy)
       STRATEGIES[module_name] = strategy
     end
 
-    if controller = options[:controller]
-      controller = (controller == true ? module_name : controller)
-      CONTROLLERS[module_name] = controller
-    end
-
-    NO_INPUT << strategy if strategy && controller != :sessions
-
-    if route = options[:route]
-      case route
-      when TrueClass
-        key, value = module_name, []
-      when Symbol
-        key, value = route, []
-      when Hash
-        key, value = route.keys.first, route.values.flatten
-      else
-        raise ArgumentError, ":route should be true, a Symbol or a Hash"
-      end
-
-      URL_HELPERS[key] ||= []
-      URL_HELPERS[key].concat(value)
-      URL_HELPERS[key].uniq!
-
-      ROUTES[module_name] = key
-    end
+    NO_INPUT << strategy if strategy
 
     if options[:model]
       path = (options[:model] == true ? "devise/models/#{module_name}" : options[:model])
@@ -355,65 +298,10 @@ module Devise
     Devise::Mapping.add_module module_name
   end
 
-  # Sets warden configuration using a block that will be invoked on warden
-  # initialization.
-  #
-  #  Devise.initialize do |config|
-  #    config.confirm_within = 2.days
-  #
-  #    config.warden do |manager|
-  #      # Configure warden to use other strategies, like oauth.
-  #      manager.oauth(:twitter)
-  #    end
-  #  end
-  def self.warden(&block)
-    @@warden_config_block = block
-  end
-
-  # Specify an omniauth provider.
-  #
-  #   config.omniauth :github, APP_ID, APP_SECRET
-  #
-  def self.omniauth(provider, *args)
-    @@helpers << Devise::OmniAuth::UrlHelpers
-    config = Devise::OmniAuth::Config.new(provider, args)
-    @@omniauth_configs[config.strategy_name.to_sym] = config
-  end
-
   # Include helpers in the given scope to AC and AV.
   def self.include_helpers(scope)
-    Rails.application.routes.url_helpers.send :include, scope::UrlHelpers
-
     ActiveSupport.on_load(:action_controller) do
       include scope::Helpers if defined?(scope::Helpers)
-    end
-  end
-
-  # Returns true if Rails version is bigger than 3.0.x
-  def self.rack_session?
-    Rails::VERSION::STRING[0,3] != "3.0"
-  end
-
-  # Regenerates url helpers considering Devise.mapping
-  def self.regenerate_helpers!
-    Devise::Controllers::UrlHelpers.remove_helpers!
-    Devise::Controllers::UrlHelpers.generate_helpers!
-  end
-
-  # A method used internally to setup warden manager from the Rails initialize
-  # block.
-  def self.configure_warden! #:nodoc:
-    @@warden_configured ||= begin
-      warden_config.failure_app   = Devise::FailureApp
-      warden_config.default_scope = Devise.default_scope
-      warden_config.intercept_401 = false
-
-      Devise.mappings.each_value do |mapping|
-        warden_config.scope_defaults mapping.name, :strategies => mapping.strategies
-      end
-
-      @@warden_config_block.try :call, Devise.warden_config
-      true
     end
   end
 
@@ -433,8 +321,6 @@ module Devise
   end
 end
 
-require 'warden'
 require 'devise/mapping'
 require 'devise/models'
 require 'devise/modules'
-require 'devise/rails'

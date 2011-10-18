@@ -1,4 +1,4 @@
-require 'orm_adapter/adapters/active_record'
+# require 'orm_adapter/adapters/active_record'
 
 module Devise
   module Orm
