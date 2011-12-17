@@ -1,3 +1,4 @@
+# -*- encoding: utf-8 -*-
 $:.push File.expand_path("../lib", __FILE__)
 require "devise/version"
 
@@ -9,7 +10,7 @@ Gem::Specification.new do |s|
   s.email       = "contact@plataformatec.com.br"
   s.homepage    = "http://github.com/plataformatec/devise"
   s.description = "Flexible authentication solution for Rails with Warden"
-  s.authors     = ['José Valim', 'Carlos Antônio']
+  s.authors     = ['Valim', 'Carlos']
 
   s.rubyforge_project = "devise"
 
